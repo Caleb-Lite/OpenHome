@@ -62,7 +62,7 @@ pub fn handle_version_migration(
     };
 
     let current_version = app_handle.package_info().version.clone();
-    // let current_version = Version::new(1, 5, 0);
+    let current_version = Version::new(1, 5, 0);
 
     if current_version < last_used_semver && !ignore_version_error {
         return Err(Error::outdated_version(last_used_semver, current_version));

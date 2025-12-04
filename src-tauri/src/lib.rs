@@ -25,12 +25,7 @@ pub fn run() {
                 match launch_error {
                     Error::OutdatedVersion { .. } => app.handle().exit(1),
                     _ => {
-                        app.dialog()
-                            .message(launch_error.to_string())
-                            .title("OpenHome Failed to Launch")
-                            .kind(MessageDialogKind::Error)
-                            .blocking_show();
-                        app.handle().exit(1);
+                        fatal_error_dialog(app, "OpenHome Failed to Launch", launch_error);
                     }
                 }
             }
@@ -38,13 +33,7 @@ pub fn run() {
             let lookup_state = match state::LookupState::load_from_storage(app.handle()) {
                 Ok(lookup) => lookup,
                 Err(err) => {
-                    app.dialog()
-                        .message(err.to_string())
-                        .title("OpenHome Failed to Launch - Lookup File Error")
-                        .kind(MessageDialogKind::Error)
-                        .blocking_show();
-                    app.handle().exit(1);
-                    unreachable!()
+                    fatal_error_dialog(app, "OpenHome Failed to Launch - Lookup File Error", err)
                 }
             };
             app.manage(lookup_state);
@@ -52,13 +41,7 @@ pub fn run() {
             let pokedex_state = match state::PokedexState::load_from_storage(app.handle()) {
                 Ok(pokedex) => pokedex,
                 Err(err) => {
-                    app.dialog()
-                        .message(err.to_string())
-                        .title("OpenHome Failed to Launch - Pokedex File Error")
-                        .kind(MessageDialogKind::Error)
-                        .blocking_show();
-                    app.handle().exit(1);
-                    unreachable!()
+                    fatal_error_dialog(app, "OpenHome Failed to Launch - Pokedex File Error", err)
                 }
             };
             app.manage(pokedex_state);
@@ -71,7 +54,7 @@ pub fn run() {
                     Ok(())
                 }
                 Err(e) => {
-                    eprintln!("Error creating menu: {}", e);
+                    eprintln!("Error creating menu: {e}");
                     Err(e)
                 }
             }
@@ -114,4 +97,40 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(not(target_os = "linux"))]
+fn fatal_error_dialog(app: &tauri::App, title: &'static str, error: Error) -> ! {
+    app.dialog()
+        .message(error.to_string())
+        .title(title)
+        .kind(MessageDialogKind::Error)
+        .blocking_show();
+
+    app.handle().cleanup_before_exit();
+    std::process::exit(1)
+}
+
+#[cfg(target_os = "linux")]
+fn fatal_error_dialog(app: &tauri::App, title: &'static str, error: Error) -> ! {
+    let dialog_handle = app.handle().clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    // Because Linux won't show a blocking dialog before the app initializes, this fakes a blocking dialog by
+    // showing a nonblocking dialog, and using a channel to wait from the outer thread.
+    let _ = app.run_on_main_thread(move || {
+        dialog_handle
+            .dialog()
+            .message(error.to_string())
+            .title(title)
+            .kind(MessageDialogKind::Error)
+            .show(move |_| {
+                let _ = tx.send(());
+            });
+    });
+
+    let _ = rx.recv();
+
+    app.handle().cleanup_before_exit();
+    std::process::exit(1)
 }

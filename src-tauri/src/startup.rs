@@ -9,22 +9,20 @@ use crate::{
     util, versioning,
 };
 
+const ERROR_OVERRIDE_MSG: &str = "This is a test error";
+const ERROR_OVERRIDE: bool = false;
+
 pub fn run_app_startup(app: &App) -> Result<()> {
+    if ERROR_OVERRIDE {
+        return Err(Error::other(ERROR_OVERRIDE_MSG));
+    }
+
     let handle = app.handle();
 
     if let Err(error) = versioning::handle_version_migration(handle, false) {
         match error {
             Error::OutdatedVersion { .. } => {
-                let should_quit = app
-                    .dialog()
-                    .message(error.to_string())
-                    .title("OpenHome Version Error")
-                    .kind(MessageDialogKind::Error)
-                    .buttons(MessageDialogButtons::OkCancelCustom(
-                        "Quit".to_owned(),
-                        "Launch App Anyways".to_owned(),
-                    ))
-                    .blocking_show();
+                let should_quit = prompt_to_quit(app, "OpenHome Version Error", &error);
 
                 if should_quit {
                     return Err(error);
@@ -112,4 +110,45 @@ fn set_theme_from_settings(app: &App) -> Result<()> {
         .ok_or(Error::WindowAccess { source: None })?
         .set_theme(theme_option)
         .map_err(|e| Error::other_with_source("Could not set theme", e))
+}
+
+// #[cfg(not(target_os = "linux"))]
+// fn prompt_to_quit(app: &tauri::App, title: &'static str, error: &Error) -> bool {
+//     app.dialog()
+//         .message(error.to_string())
+//         .title(title)
+//         .kind(MessageDialogKind::Error)
+//         .buttons(MessageDialogButtons::OkCancelCustom(
+//             "Quit".to_owned(),
+//             "Launch App Anyways".to_owned(),
+//         ))
+//         .blocking_show()
+// }
+
+// #[cfg(target_os = "linux")]
+fn prompt_to_quit(app: &tauri::App, title: &'static str, error: &Error) -> bool {
+    let dialog_handle = app.handle().clone();
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
+    let msg = error.to_string();
+
+    // Because Linux won't show a blocking dialog before the app initializes, this fakes a blocking dialog by
+    // showing a nonblocking dialog, and using a channel to wait from the outer thread.
+    let _ = app.run_on_main_thread(move || {
+        dialog_handle
+            .dialog()
+            .message(msg)
+            .title(title)
+            .kind(MessageDialogKind::Error)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Quit".to_owned(),
+                "Launch App Anyways".to_owned(),
+            ))
+            .show(move |should_quit| {
+                let _ = tx.send(should_quit);
+            });
+    });
+
+    let should_quit = rx.recv();
+
+    should_quit.unwrap_or(true)
 }
