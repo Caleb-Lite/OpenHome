@@ -694,11 +694,13 @@ export class OHPKM extends OhpkmV2Wasm implements PKMInterface {
     this.movePPUps = other.movePPUps as FourMoves
 
     if (this.dexNum !== other.dexNum && isEvolution(this, other)) {
-      this.speciesAndForme = new SpeciesAndForme(other.dexNum, this.formeNum)
+      console.log(this.dexNum, this.formeNum, new SpeciesAndForme(other.dexNum, other.formeNum))
+      this.speciesAndForme = new SpeciesAndForme(other.dexNum, other.formeNum)
     }
 
     if (this.dexNum === other.dexNum || isEvolution(this, other)) {
-      this.speciesAndForme = new SpeciesAndForme(this.dexNum, this.formeNum)
+      console.log(this.dexNum, other.dexNum, new SpeciesAndForme(other.dexNum, other.formeNum))
+      this.speciesAndForme = new SpeciesAndForme(other.dexNum, other.formeNum)
     }
 
     this.heldItemIndex = other.heldItemIndex
